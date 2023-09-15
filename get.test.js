@@ -1,71 +1,75 @@
+const { expect } = require('chai');
+const sinon = require('sinon');
 const AWS = require('aws-sdk');
-
-const chai = require('chai');
-const expect = chai.expect;
-
-
-const { get } = require('./get.js'); 
+const { get } = require('./get.js'); // Replace with your Lambda file path
 
 describe('get Lambda Function', () => {
-    let getStub;
+  let getStub;
 
-    before(() => {
-        
-        getStub = sinon.stub(AWS.DynamoDB.DocumentClient.prototype, 'get');
+  before(() => {
+    // Stub the DocumentClient's get method
+    getStub = sinon.stub(AWS.DynamoDB.DocumentClient.prototype, 'get');
+  });
+
+  after(() => {
+    // Restore the stub after tests
+    getStub.restore();
+  });
+
+  it('should successfully retrieve a blog post', async () => {
+    // Mock a successful DynamoDB get operation
+    getStub.returns({
+      promise: () => Promise.resolve({ Item: { postId: '1', Author: 'John Doe', Content: 'Sample content', Title: 'Sample title' } }),
     });
 
-    after(() => {
-        
-        getStub.restore();
+    const event = {
+      pathParameters: { postId: '1' },
+    };
+
+    const result = await get(event);
+
+    expect(result.statusCode).to.equal(200);
+    expect(JSON.parse(result.body)).to.deep.equal({
+      postId: '1',
+      Author: 'John Doe',
+      Content: 'Sample content',
+      Title: 'Sample title',
+    });
+  });
+
+  it('should handle a blog post not found', async () => {
+    // Mock a DynamoDB get operation that returns no item
+    getStub.returns({
+      promise: () => Promise.resolve({ Item: null }),
     });
 
-    it('should return a blog post when it exists', async () => {
-        const event = {
-            pathParameters: {
-                postId: '11',
-            },
-        };
+    const event = {
+      pathParameters: { postId: '2' },
+    };
 
-        
-        AWSMock.mock('DynamoDB.DocumentClient', 'get', { Item: { postId: '909', title: 'twelve' } });
+    const result = await get(event);
 
-        const response = await get(event);
+    expect(result.statusCode).to.equal(404);
+    expect(JSON.parse(result.body)).to.deep.equal({
+      message: 'Blog post not found',
+    });
+  });
 
-        expect(response.statusCode).to.equal(200);
-        expect(response.body).to.equal('{"postId":"909","title":"twelve"}');
+  it('should handle an error while reading blog post', async () => {
+    // Mock a failed DynamoDB get operation
+    getStub.returns({
+      promise: () => Promise.reject(new Error('Error reading blog post')),
     });
 
-    it('should return a 404 error when the blog post does not exist', async () => {
-        const event = {
-            pathParameters: {
-                postId: '99',
-            },
-        };
+    const event = {
+      pathParameters: { postId: '3' },
+    };
 
-   
-        AWSMock.mock('DynamoDB.DocumentClient', 'get', {});
+    const result = await get(event);
 
-        const response = await get(event);
-
-        expect(response.statusCode).to.equal(404);
-        expect(response.body).to.equal('{"message":"Blog post not found"}');
+    expect(result.statusCode).to.equal(500);
+    expect(JSON.parse(result.body)).to.deep.equal({
+      message: 'Error reading blog post',
     });
-
-    it('should return a 500 error when an error occurs', async () => {
-        const event = {
-            pathParameters: {
-                postId: 'etr',
-            },
-        };
-
-        
-        AWSMock.mock('DynamoDB.DocumentClient', 'get', (params, callback) => {
-            callback(new Error('Simulated error'));
-        });
-
-        const response = await get(event);
-
-        expect(response.statusCode).to.equal(500);
-        expect(response.body).to.equal('{"message":"Error reading blog post"}');
-    });
+  });
 });
