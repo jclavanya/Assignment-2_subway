@@ -1,46 +1,65 @@
+const { expect } = require("chai");
 const AWS = require("aws-sdk");
-const chai = require("chai");
-const { expect } = chai;
+const sinon = require("sinon");
+const { create } = require("./create.js"); // Replace with your Lambda file path
 
-const docClient = new AWS.DynamoDB.DocumentClient();
+describe("create Lambda Function", () => {
+  let putStub;
 
-const handler = require("./create.js"); 
-
-describe("Create Blog Post Lambda Function", () => {
-  it("should create a new blog post", async () => {
-    const event = {
-      body: JSON.stringify({
-        postId: "123",
-        Author: "John Doe",
-        Content: "This is a test blog post",
-        Title: "Test Blog Post",
-      }),
-    };
-
-    const response = await handler.create(event);
-
-    expect(response.statusCode).to.equal(200);
-    expect(response.body).to.equal(JSON.stringify({ message: "Blog post created successfully" }));
-
-    // Clean up: Delete the created item from DynamoDB
-    const params = {
-      TableName: "posts", // Replace with your DynamoDB table name
-      Key: { postId: "123" }, // Match the postId used above
-    };
-
-    await docClient.delete(params).promise();
+  before(() => {
+    // Stub the DocumentClient's put method
+    putStub = sinon.stub(AWS.DynamoDB.DocumentClient.prototype, "put");
   });
 
-  it("should handle errors when creating a blog post", async () => {
+  after(() => {
+    // Restore the stub after tests
+    putStub.restore();
+  });
+
+  it("should successfully create a blog post", async () => {
+    // Mock the successful put operation
+    putStub.returns({
+      promise: () => Promise.resolve({}),
+    });
+
     const event = {
       body: JSON.stringify({
-        // Invalid data to trigger an error
+        postId: "1",
+        Author: "John Doe",
+        Content: "Sample content",
+        Title: "Sample title",
       }),
     };
 
-    const response = await handler.create(event);
+    const result = await create(event);
 
-    expect(response.statusCode).to.equal(500);
-    expect(response.body).to.equal(JSON.stringify({ error: "Failed to create blog post" }));
+    expect(result.statusCode).to.equal(200);
+    expect(JSON.parse(result.body)).to.deep.equal({
+      message: "Blog post created successfully",
+    });
+  });
+
+  it("should handle a failure to create a blog post", async () => {
+    // Mock the failed put operation
+    putStub.returns({
+      promise: () => Promise.reject(new Error("Failed to create post")),
+    });
+
+    const event = {
+      body: JSON.stringify({
+        postId: 2,
+        Author: 3,
+        Content: 4,
+        Title: 9,
+      }),
+    };
+
+    const result = await create(event);
+
+    expect(result.statusCode).to.equal(500);
+    expect(JSON.parse(result.body)).to.deep.equal({
+      error: "Failed to create blog post",
+    });
   });
 });
+
